@@ -8,6 +8,9 @@ interface MonthGridProps {
   month: number;
   bookings: Booking[];
   counts: Map<string, number>;
+  /** Falso para roles sin permiso de escritura: la celda deja de ofrecer
+   *  el alta, pero las reservas del dia siguen abriendose para consulta. */
+  canWrite: boolean;
   onSelectDay: (isoDate: string) => void;
   onSelectBooking: (booking: Booking) => void;
 }
@@ -23,6 +26,7 @@ export function MonthGrid({
   month,
   bookings,
   counts,
+  canWrite,
   onSelectDay,
   onSelectBooking,
 }: MonthGridProps) {
@@ -75,17 +79,25 @@ export function MonthGrid({
           return (
             <div
               key={iso}
-              role="button"
-              tabIndex={0}
-              onClick={() => onSelectDay(iso)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault();
-                  onSelectDay(iso);
-                }
-              }}
-              aria-label={`Agregar reserva el ${iso}`}
-              className="min-h-24 cursor-pointer bg-background p-1 text-left align-top hover:bg-accent"
+              role={canWrite ? 'button' : undefined}
+              tabIndex={canWrite ? 0 : undefined}
+              onClick={canWrite ? () => onSelectDay(iso) : undefined}
+              onKeyDown={
+                canWrite
+                  ? (e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        onSelectDay(iso);
+                      }
+                    }
+                  : undefined
+              }
+              aria-label={canWrite ? `Agregar reserva el ${iso}` : undefined}
+              className={
+                canWrite
+                  ? 'min-h-24 cursor-pointer bg-background p-1 text-left align-top hover:bg-accent'
+                  : 'min-h-24 bg-background p-1 text-left align-top'
+              }
             >
               <div className="flex items-center justify-between">
                 <span className="text-xs font-medium">{day}</span>

@@ -6,6 +6,7 @@ import { BookingDetail } from '@/components/agenda/booking-detail';
 import { BookingForm, type BookingFormValues } from '@/components/agenda/booking-form';
 import { MonthGrid } from '@/components/agenda/month-grid';
 import { useAuth } from '@/hooks/use-auth';
+import { useCan } from '@/hooks/use-can';
 import { createBooking } from '@/lib/bookings/create';
 import { countByDate, listBookingsForMonth } from '@/lib/bookings/queries';
 import type { Booking, BookingStatus } from '@/lib/bookings/types';
@@ -14,6 +15,13 @@ import { createClient } from '@/lib/supabase/client';
 export default function AgendaPage() {
   const supabase = useMemo(() => createClient(), []);
   const { accountId, user } = useAuth();
+
+  // Crear reservas y cambiar su estado son escrituras: la RLS de la tabla
+  // las exige a partir del rol `agent`. Gateamos tambien la interfaz, como
+  // hacen pipelines y contacts, para que un `viewer` no vea botones vivos
+  // que despues fallan con un error crudo de Postgres. Ver sigue abierto
+  // para todos los miembros.
+  const canWrite = useCan('send-messages');
 
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
@@ -119,6 +127,7 @@ export default function AgendaPage() {
           month={month}
           bookings={bookings}
           counts={counts}
+          canWrite={canWrite}
           onSelectDay={(iso) => {
             setSelected(null);
             setFormDate(iso);
@@ -137,6 +146,7 @@ export default function AgendaPage() {
             initialDate={formDate}
             existingOnDate={counts.get(formDate) ?? 0}
             submitting={submitting}
+            canWrite={canWrite}
             onSubmit={handleCreate}
             onCancel={() => setFormDate(null)}
           />
@@ -148,6 +158,7 @@ export default function AgendaPage() {
           <BookingDetail
             booking={selected}
             updating={submitting}
+            canWrite={canWrite}
             onChangeStatus={handleStatus}
             onClose={() => setSelected(null)}
           />

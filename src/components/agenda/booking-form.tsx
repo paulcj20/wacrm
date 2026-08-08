@@ -22,6 +22,8 @@ interface BookingFormProps {
   /** Cuántas reservas ya hay ese día — alimenta el aviso de conflicto. */
   existingOnDate: number;
   submitting: boolean;
+  /** Falso para roles sin permiso de escritura. */
+  canWrite: boolean;
   onSubmit: (values: BookingFormValues) => void;
   onCancel: () => void;
 }
@@ -30,6 +32,7 @@ export function BookingForm({
   initialDate,
   existingOnDate,
   submitting,
+  canWrite,
   onSubmit,
   onCancel,
 }: BookingFormProps) {
@@ -159,7 +162,7 @@ export function BookingForm({
 
       <div className="flex gap-2">
         <button
-          type="submit" disabled={submitting}
+          type="submit" disabled={submitting || !canWrite}
           className="rounded bg-primary px-4 py-2 text-primary-foreground disabled:opacity-50"
         >
           {submitting ? 'Guardando…' : 'Guardar reserva'}

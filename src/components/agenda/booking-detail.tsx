@@ -5,11 +5,14 @@ import { BOOKING_STATUSES, type Booking, type BookingStatus } from '@/lib/bookin
 interface BookingDetailProps {
   booking: Booking;
   updating: boolean;
+  /** Falso para roles sin permiso de escritura: el detalle sigue
+   *  visible, pero los botones de estado quedan inertes. */
+  canWrite: boolean;
   onChangeStatus: (status: BookingStatus) => void;
   onClose: () => void;
 }
 
-export function BookingDetail({ booking, updating, onChangeStatus, onClose }: BookingDetailProps) {
+export function BookingDetail({ booking, updating, canWrite, onChangeStatus, onClose }: BookingDetailProps) {
   return (
     <div className="space-y-4">
       <div>
@@ -51,7 +54,7 @@ export function BookingDetail({ booking, updating, onChangeStatus, onClose }: Bo
           <button
             key={s}
             type="button"
-            disabled={updating || booking.status === s}
+            disabled={updating || !canWrite || booking.status === s}
             onClick={() => onChangeStatus(s)}
             className="rounded border px-3 py-1 text-sm disabled:opacity-40"
           >

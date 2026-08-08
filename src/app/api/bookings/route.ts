@@ -40,6 +40,18 @@ function getClientIp(request: Request): string {
   return 'unknown';
 }
 
+/**
+ * `guest_count` es una columna INTEGER. Sin este guardado, un valor
+ * negativo, fraccionario o desmesurado pasa la validacion y recien
+ * revienta contra Postgres, devolviendo un 500 generico en vez de un
+ * 400 que le diga al visitante que corrija el campo.
+ * Ausente es valido: el campo es opcional y se guarda como null.
+ */
+function isValidGuestCount(value: unknown): boolean {
+  if (value === undefined || value === null) return true;
+  return typeof value === 'number' && Number.isInteger(value) && value > 0 && value < 100000;
+}
+
 function isIsoDate(value: unknown): value is string {
   return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
 }
@@ -74,7 +86,7 @@ export async function POST(request: Request) {
   const phone = typeof body.phone === 'string' ? body.phone.trim() : '';
   const email = typeof body.email === 'string' ? body.email.trim() : null;
 
-  if (!clientName || !phone || !isIsoDate(body.eventDate)) {
+  if (!clientName || !phone || !isIsoDate(body.eventDate) || !isValidGuestCount(body.guestCount)) {
     return NextResponse.json({ error: 'invalid_input' }, { status: 400, headers: corsHeaders() });
   }
 

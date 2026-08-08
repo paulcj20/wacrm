@@ -113,6 +113,39 @@ describe('POST /api/bookings', () => {
     expect(response.status).toBe(400);
   });
 
+  it('rechaza un numero de invitados negativo', async () => {
+    const response = await POST(request({ ...validBody, guestCount: -5 }));
+
+    expect(response.status).toBe(400);
+    expect(mocks.createBooking).not.toHaveBeenCalled();
+  });
+
+  it('rechaza un numero de invitados fraccionario', async () => {
+    const response = await POST(request({ ...validBody, guestCount: 12.5 }));
+
+    expect(response.status).toBe(400);
+    expect(mocks.createBooking).not.toHaveBeenCalled();
+  });
+
+  it('rechaza un numero de invitados desmesurado', async () => {
+    // guest_count es INTEGER; sin este guardado el valor reventaria
+    // contra Postgres y devolveria un 500 en vez de un 400.
+    const response = await POST(request({ ...validBody, guestCount: 999999999 }));
+
+    expect(response.status).toBe(400);
+    expect(mocks.createBooking).not.toHaveBeenCalled();
+  });
+
+  it('acepta el envio sin numero de invitados, que es opcional', async () => {
+    const body = { ...validBody } as Record<string, unknown>;
+    delete body.guestCount;
+
+    const response = await POST(request(body));
+
+    expect(response.status).toBe(201);
+    expect(mocks.createBooking).toHaveBeenCalledTimes(1);
+  });
+
   it('responde 429 cuando se pasa del limite por IP', async () => {
     mocks.checkRateLimit.mockReturnValue({ success: false });
 
