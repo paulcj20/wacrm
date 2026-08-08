@@ -218,7 +218,10 @@ export default function AgendaPage() {
                 updating={submitting}
                 canWrite={canWrite}
                 onChangeStatus={handleStatus}
-                onClose={() => setView(null)}
+                // Volver al dia, no cerrar todo: al detalle casi siempre se
+                // llega desde la lista de ese dia, y cerrar el modal entero
+                // obliga a rehacer el camino para ver la reserva de al lado.
+                onClose={() => setView({ type: 'day', date: view.booking.event_date })}
               />
             </>
           )}
