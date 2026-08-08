@@ -23,6 +23,10 @@ export interface Booking {
   event_date: string;
   /** `HH:MM:SS` o null. */
   event_time: string | null;
+  /** `HH:MM:SS` o null. Puede ser menor que event_time: un evento
+   *  nocturno cruza la medianoche. */
+  event_time_end: string | null;
+  address: string | null;
   guest_count: number | null;
   event_type: string | null;
   message: string | null;
@@ -40,6 +44,9 @@ export interface NewBookingInput {
   eventDate: string;
   /** `HH:MM` o `HH:MM:SS`. */
   eventTime?: string | null;
+  /** `HH:MM` o `HH:MM:SS`. Puede ser menor que eventTime. */
+  eventTimeEnd?: string | null;
+  address?: string | null;
   guestCount?: number | null;
   eventType?: string | null;
   message?: string | null;

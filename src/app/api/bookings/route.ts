@@ -17,10 +17,11 @@
 import { NextResponse } from 'next/server';
 
 import { createBooking } from '@/lib/bookings/create';
+import { normalizeBookingPhone } from '@/lib/bookings/phone';
 import { supabaseAdmin } from '@/lib/flows/admin-client';
 import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit';
 
-const MAX_LEN = { clientName: 200, email: 320, phone: 40, eventType: 100, message: 5000 };
+const MAX_LEN = { clientName: 200, email: 320, phone: 40, eventType: 100, message: 5000, address: 500 };
 
 function corsHeaders(): Record<string, string> {
   return {
@@ -86,7 +87,11 @@ export async function POST(request: Request) {
   const phone = typeof body.phone === 'string' ? body.phone.trim() : '';
   const email = typeof body.email === 'string' ? body.email.trim() : null;
 
-  if (!clientName || !phone || !isIsoDate(body.eventDate) || !isValidGuestCount(body.guestCount)) {
+  // El telefono es el identificador del cliente en el CRM: uno invalido
+  // se guarda igual y recien se descubre cuando alguien intenta escribirle.
+  const normalizedPhone = phone ? normalizeBookingPhone(phone) : null;
+
+  if (!clientName || !normalizedPhone || !isIsoDate(body.eventDate) || !isValidGuestCount(body.guestCount)) {
     return NextResponse.json({ error: 'invalid_input' }, { status: 400, headers: corsHeaders() });
   }
 
@@ -95,7 +100,8 @@ export async function POST(request: Request) {
     tooLong(email, MAX_LEN.email) ||
     tooLong(phone, MAX_LEN.phone) ||
     tooLong(body.eventType, MAX_LEN.eventType) ||
-    tooLong(body.message, MAX_LEN.message)
+    tooLong(body.message, MAX_LEN.message) ||
+    tooLong(body.address, MAX_LEN.address)
   ) {
     return NextResponse.json({ error: 'too_long' }, { status: 400, headers: corsHeaders() });
   }
@@ -125,9 +131,11 @@ export async function POST(request: Request) {
     await createBooking(admin, accountId, account.owner_user_id as string, {
       clientName,
       email,
-      phone,
+      phone: normalizedPhone,
       eventDate: body.eventDate as string,
       eventTime: typeof body.eventTime === 'string' ? body.eventTime : null,
+      eventTimeEnd: typeof body.eventTimeEnd === 'string' ? body.eventTimeEnd : null,
+      address: typeof body.address === 'string' ? body.address : null,
       guestCount: typeof body.guestCount === 'number' ? body.guestCount : null,
       eventType: typeof body.eventType === 'string' ? body.eventType : null,
       message: typeof body.message === 'string' ? body.message : null,

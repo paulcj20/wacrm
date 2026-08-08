@@ -20,6 +20,8 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { findExistingContact, isUniqueViolation } from '@/lib/contacts/dedupe';
 import { normalizePhone } from '@/lib/whatsapp/phone-utils';
 
+import { normalizeBookingPhone } from './phone';
+
 import type { NewBookingInput } from './types';
 
 export interface CreateBookingResult {
@@ -139,8 +141,17 @@ export async function createBooking(
   supabase: SupabaseClient,
   accountId: string,
   userId: string,
-  input: NewBookingInput,
+  rawInput: NewBookingInput,
 ): Promise<CreateBookingResult> {
+  // El telefono se normaliza aca ademas de en los bordes. La funcion es
+  // idempotente, asi que no cuesta nada, y evita que un llamador futuro
+  // guarde un numero sin codigo de pais al que despues nadie pueda
+  // escribirle por WhatsApp.
+  const normalizedPhone = normalizeBookingPhone(rawInput.phone);
+  if (!normalizedPhone) {
+    throw new Error(`Telefono invalido: ${rawInput.phone}`);
+  }
+  const input: NewBookingInput = { ...rawInput, phone: normalizedPhone };
   const { data, error } = await supabase
     .from('bookings')
     .insert({
@@ -151,6 +162,8 @@ export async function createBooking(
       phone: input.phone,
       event_date: input.eventDate,
       event_time: normalizeTime(input.eventTime),
+      event_time_end: normalizeTime(input.eventTimeEnd),
+      address: input.address ?? null,
       guest_count: input.guestCount ?? null,
       event_type: input.eventType ?? null,
       message: input.message ?? null,

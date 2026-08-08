@@ -74,7 +74,32 @@ describe('POST /api/bookings', () => {
     const [, accountId, , input] = mocks.createBooking.mock.calls[0];
     expect(accountId).toBe('account-1');
     expect(input.source).toBe('web');
-    expect(input.phone).toBe('+59891908707');
+    // Normalizado a digitos: es lo que wa.me y la deduplicacion necesitan.
+    expect(input.phone).toBe('59891908707');
+  });
+
+  it('le agrega el codigo de pais a un numero local uruguayo', async () => {
+    await POST(request({ ...validBody, phone: '091 908 707' }));
+
+    const [, , , input] = mocks.createBooking.mock.calls[0];
+    expect(input.phone).toBe('59891908707');
+  });
+
+  it('rechaza un telefono que no es un telefono', async () => {
+    // El bug reportado: el formulario aceptaba "sdfgsdf" y guardaba una
+    // reserva con la que despues nadie podia contactar al cliente.
+    const response = await POST(request({ ...validBody, phone: 'sdfgsdf' }));
+
+    expect(response.status).toBe(400);
+    expect(mocks.createBooking).not.toHaveBeenCalled();
+  });
+
+  it('acepta la hora de finalizacion y la direccion', async () => {
+    await POST(request({ ...validBody, eventTimeEnd: '02:00:00', address: 'Zum Felde 1234' }));
+
+    const [, , , input] = mocks.createBooking.mock.calls[0];
+    expect(input.eventTimeEnd).toBe('02:00:00');
+    expect(input.address).toBe('Zum Felde 1234');
   });
 
   it('nunca toma el account_id del cuerpo del pedido', async () => {

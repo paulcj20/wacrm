@@ -32,6 +32,8 @@ function booking(date: string): Booking {
     phone: '1',
     event_date: date,
     event_time: null,
+    event_time_end: null,
+    address: null,
     guest_count: null,
     event_type: null,
     message: null,
