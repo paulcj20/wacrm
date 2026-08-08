@@ -1,6 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { findExistingContact, isUniqueViolation } from '@/lib/contacts/dedupe';
+
 import { createBooking } from './create';
+
+vi.mock('@/lib/contacts/dedupe', () => ({
+  findExistingContact: vi.fn(),
+  isUniqueViolation: vi.fn(),
+}));
+
+const mockFindExistingContact = vi.mocked(findExistingContact);
+const mockIsUniqueViolation = vi.mocked(isUniqueViolation);
 
 /**
  * Constructor de un doble de Supabase. Cada tabla devuelve el resultado
@@ -19,14 +29,6 @@ function makeSupabase(handlers: Record<string, unknown>) {
           return {
             select: () => ({
               single: async () => handlers[`${table}.insert`],
-            }),
-          };
-        },
-        upsert(payload: unknown, options: unknown) {
-          calls.push({ table, op: 'upsert', payload: { payload, options } });
-          return {
-            select: () => ({
-              single: async () => handlers[`${table}.upsert`],
             }),
           };
         },
@@ -67,12 +69,16 @@ const input = {
 describe('createBooking', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    mockFindExistingContact.mockReset();
+    mockIsUniqueViolation.mockReset();
+    mockIsUniqueViolation.mockReturnValue(false);
   });
 
   it('guarda la reserva con account_id y user_id', async () => {
+    mockFindExistingContact.mockResolvedValue(null);
     const supabase = makeSupabase({
       'bookings.insert': { data: { id: 'booking-1' }, error: null },
-      'contacts.upsert': { data: { id: 'contact-1' }, error: null },
+      'contacts.insert': { data: { id: 'contact-1' }, error: null },
       'pipelines.select': { data: null, error: null },
     });
 
@@ -88,9 +94,10 @@ describe('createBooking', () => {
   });
 
   it('normaliza la hora a HH:MM:SS', async () => {
+    mockFindExistingContact.mockResolvedValue(null);
     const supabase = makeSupabase({
       'bookings.insert': { data: { id: 'booking-1' }, error: null },
-      'contacts.upsert': { data: { id: 'contact-1' }, error: null },
+      'contacts.insert': { data: { id: 'contact-1' }, error: null },
       'pipelines.select': { data: null, error: null },
     });
 
@@ -102,9 +109,10 @@ describe('createBooking', () => {
   });
 
   it('guarda la reserva igual cuando la sincronizacion con el CRM falla', async () => {
+    mockFindExistingContact.mockResolvedValue(null);
     const supabase = makeSupabase({
       'bookings.insert': { data: { id: 'booking-1' }, error: null },
-      'contacts.upsert': { data: null, error: { message: 'rls denied' } },
+      'contacts.insert': { data: null, error: { message: 'rls denied' } },
       'pipelines.select': { data: null, error: null },
     });
 
@@ -123,5 +131,76 @@ describe('createBooking', () => {
     await expect(
       createBooking(supabase, 'account-1', 'user-1', input),
     ).rejects.toThrow(/boom/);
+  });
+
+  it('reutiliza un contacto existente en vez de crear uno segundo', async () => {
+    mockFindExistingContact.mockResolvedValue({ id: 'contact-existing', phone: input.phone });
+    const supabase = makeSupabase({
+      'bookings.insert': { data: { id: 'booking-1' }, error: null },
+      'pipelines.select': { data: null, error: null },
+    });
+
+    const result = await createBooking(supabase, 'account-1', 'user-1', input);
+
+    expect(result.contactId).toBe('contact-existing');
+    expect(result.crmSynced).toBe(true);
+    const contactInsert = (supabase as never as { calls: Array<{ table: string }> }).calls.find(
+      (c) => c.table === 'contacts',
+    );
+    expect(contactInsert).toBeUndefined();
+    expect(mockFindExistingContact).toHaveBeenCalledTimes(1);
+  });
+
+  it('crea el contacto cuando no existe ninguno', async () => {
+    mockFindExistingContact.mockResolvedValue(null);
+    const supabase = makeSupabase({
+      'bookings.insert': { data: { id: 'booking-1' }, error: null },
+      'contacts.insert': { data: { id: 'contact-new' }, error: null },
+      'pipelines.select': { data: null, error: null },
+    });
+
+    const result = await createBooking(supabase, 'account-1', 'user-1', input);
+
+    expect(result.contactId).toBe('contact-new');
+    expect(result.crmSynced).toBe(true);
+    const contactInsert = (supabase as never as { calls: Array<{ table: string; payload: Record<string, unknown> }> })
+      .calls.find((c) => c.table === 'contacts');
+    expect(contactInsert?.payload.account_id).toBe('account-1');
+    expect(contactInsert?.payload.user_id).toBe('user-1');
+    expect((contactInsert?.payload as Record<string, unknown>).phone_normalized).toBeUndefined();
+  });
+
+  it('cuando la insercion choca con una violacion de unicidad, recupera el contacto que gano la carrera', async () => {
+    mockFindExistingContact
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ id: 'contact-race-winner', phone: input.phone });
+    mockIsUniqueViolation.mockReturnValue(true);
+    const supabase = makeSupabase({
+      'bookings.insert': { data: { id: 'booking-1' }, error: null },
+      'contacts.insert': { data: null, error: { code: '23505', message: 'duplicate' } },
+      'pipelines.select': { data: null, error: null },
+    });
+
+    const result = await createBooking(supabase, 'account-1', 'user-1', input);
+
+    expect(result.contactId).toBe('contact-race-winner');
+    expect(result.crmSynced).toBe(true);
+    expect(mockFindExistingContact).toHaveBeenCalledTimes(2);
+  });
+
+  it('si la resolucion del contacto falla del todo, la reserva sigue existiendo con crmSynced en false', async () => {
+    mockFindExistingContact.mockResolvedValueOnce(null).mockResolvedValueOnce(null);
+    mockIsUniqueViolation.mockReturnValue(true);
+    const supabase = makeSupabase({
+      'bookings.insert': { data: { id: 'booking-1' }, error: null },
+      'contacts.insert': { data: null, error: { code: '23505', message: 'duplicate' } },
+      'pipelines.select': { data: null, error: null },
+    });
+
+    const result = await createBooking(supabase, 'account-1', 'user-1', input);
+
+    expect(result.bookingId).toBe('booking-1');
+    expect(result.crmSynced).toBe(false);
+    expect(result.contactId).toBeNull();
   });
 });

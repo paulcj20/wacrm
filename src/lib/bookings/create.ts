@@ -17,6 +17,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 
+import { findExistingContact, isUniqueViolation } from '@/lib/contacts/dedupe';
 import { normalizePhone } from '@/lib/whatsapp/phone-utils';
 
 import type { NewBookingInput } from './types';
@@ -41,9 +42,17 @@ function normalizeTime(value: string | null | undefined): string | null {
 /**
  * Crea o reutiliza el contacto y le cuelga una tarjeta de pipeline.
  *
- * La deduplicacion por telefono no se implementa aca: la base ya tiene
- * una columna generada `phone_normalized` con un indice
- * UNIQUE (account_id, phone_normalized), asi que alcanza con ON CONFLICT.
+ * La deduplicacion por telefono usa el helper compartido `findExistingContact`
+ * (el mismo que usan el webhook de WhatsApp, el alta manual y el import de
+ * CSV): el indice unico en `contacts (account_id, phone_normalized)` es
+ * PARCIAL (`WHERE phone_normalized <> ''`), asi que Postgres no puede
+ * inferirlo para un `ON CONFLICT` sin el predicado — PostgREST no lo emite,
+ * y el upsert fallaba siempre con 42P10.
+ *
+ * Si ya existe un contacto para ese telefono se reutiliza tal cual (no se
+ * pisan nombre/email: puede que el equipo ya los haya corregido a mano).
+ * Si no existe, se inserta uno nuevo; si esa insercion choca con una
+ * violacion de unicidad (otro writer gano la carrera), se vuelve a buscar.
  *
  * Devuelve el contact_id, o null si algo fallo.
  */
@@ -54,25 +63,36 @@ export async function syncBookingToCrm(
   input: NewBookingInput,
   bookingId: string,
 ): Promise<string | null> {
-  const { data: contact, error: contactError } = await supabase
-    .from('contacts')
-    .upsert(
-      {
+  let contactId: string | null = null;
+
+  const existing = await findExistingContact(supabase, accountId, input.phone);
+  if (existing) {
+    contactId = existing.id;
+  } else {
+    const { data: created, error: insertError } = await supabase
+      .from('contacts')
+      .insert({
         account_id: accountId,
         user_id: userId,
         phone: input.phone,
         name: input.clientName,
         email: input.email ?? null,
-      },
-      { onConflict: 'account_id,phone_normalized' },
-    )
-    .select('id')
-    .single();
+      })
+      .select('id')
+      .single();
 
-  if (contactError || !contact) {
-    console.error('[bookings] contact upsert failed:', contactError);
-    return null;
+    if (created) {
+      contactId = created.id;
+    } else if (isUniqueViolation(insertError)) {
+      const raced = await findExistingContact(supabase, accountId, input.phone);
+      contactId = raced?.id ?? null;
+    } else {
+      console.error('[bookings] contact insert failed:', insertError);
+      return null;
+    }
   }
+
+  if (!contactId) return null;
 
   // La tarjeta es opcional: si no hay pipeline configurado todavia,
   // la reserva y el contacto ya cumplieron su funcion.
@@ -99,7 +119,7 @@ export async function syncBookingToCrm(
           user_id: userId,
           pipeline_id: pipeline.id,
           stage_id: stage.id,
-          contact_id: contact.id,
+          contact_id: contactId,
           title: `${input.eventType ?? 'Evento'} — ${input.clientName}`,
           // expected_close_date ya existe en deals y es DATE: la fecha
           // del evento entra ahi sin inventar columnas.
@@ -112,7 +132,7 @@ export async function syncBookingToCrm(
     console.error('[bookings] deal creation failed:', err);
   }
 
-  return contact.id;
+  return contactId;
 }
 
 export async function createBooking(
