@@ -1,0 +1,163 @@
+// ============================================================
+// Alta de reservas.
+//
+// Una sola implementacion para los dos caminos de entrada:
+//   - la ruta publica del formulario del sitio (cliente service-role,
+//     solo servidor)
+//   - la pagina de agenda del panel (cliente con RLS del usuario)
+//
+// El cliente Supabase se recibe por parametro justamente para que la
+// logica no se duplique entre ambos.
+//
+// Garantia central: la reserva se guarda primero y la sincronizacion
+// con el CRM es best-effort. Un fallo creando el contacto o la tarjeta
+// nunca hace perder la reserva — eso seria perder trabajo del negocio
+// por un problema secundario.
+// ============================================================
+
+import type { SupabaseClient } from '@supabase/supabase-js';
+
+import { normalizePhone } from '@/lib/whatsapp/phone-utils';
+
+import type { NewBookingInput } from './types';
+
+export interface CreateBookingResult {
+  bookingId: string;
+  contactId: string | null;
+  crmSynced: boolean;
+}
+
+/** Postgres `time` quiere HH:MM:SS; el input del navegador da HH:MM. */
+function normalizeTime(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const parts = value.split(':');
+  if (parts.length < 2) return null;
+  const hh = parts[0].padStart(2, '0');
+  const mm = parts[1].padStart(2, '0');
+  const ss = (parts[2] ?? '00').padStart(2, '0');
+  return `${hh}:${mm}:${ss}`;
+}
+
+/**
+ * Crea o reutiliza el contacto y le cuelga una tarjeta de pipeline.
+ *
+ * La deduplicacion por telefono no se implementa aca: la base ya tiene
+ * una columna generada `phone_normalized` con un indice
+ * UNIQUE (account_id, phone_normalized), asi que alcanza con ON CONFLICT.
+ *
+ * Devuelve el contact_id, o null si algo fallo.
+ */
+export async function syncBookingToCrm(
+  supabase: SupabaseClient,
+  accountId: string,
+  userId: string,
+  input: NewBookingInput,
+  bookingId: string,
+): Promise<string | null> {
+  const { data: contact, error: contactError } = await supabase
+    .from('contacts')
+    .upsert(
+      {
+        account_id: accountId,
+        user_id: userId,
+        phone: input.phone,
+        name: input.clientName,
+        email: input.email ?? null,
+      },
+      { onConflict: 'account_id,phone_normalized' },
+    )
+    .select('id')
+    .single();
+
+  if (contactError || !contact) {
+    console.error('[bookings] contact upsert failed:', contactError);
+    return null;
+  }
+
+  // La tarjeta es opcional: si no hay pipeline configurado todavia,
+  // la reserva y el contacto ya cumplieron su funcion.
+  try {
+    const { data: pipeline } = await supabase
+      .from('pipelines')
+      .select('id')
+      .eq('account_id', accountId)
+      .eq('name', 'Sales Pipeline')
+      .maybeSingle();
+
+    if (pipeline) {
+      const { data: stage } = await supabase
+        .from('pipeline_stages')
+        .select('id')
+        .eq('pipeline_id', pipeline.id)
+        .order('position', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+
+      if (stage) {
+        await supabase.from('deals').insert({
+          account_id: accountId,
+          user_id: userId,
+          pipeline_id: pipeline.id,
+          stage_id: stage.id,
+          contact_id: contact.id,
+          title: `${input.eventType ?? 'Evento'} — ${input.clientName}`,
+          // expected_close_date ya existe en deals y es DATE: la fecha
+          // del evento entra ahi sin inventar columnas.
+          expected_close_date: input.eventDate,
+          notes: `Reserva ${bookingId}`,
+        });
+      }
+    }
+  } catch (err) {
+    console.error('[bookings] deal creation failed:', err);
+  }
+
+  return contact.id;
+}
+
+export async function createBooking(
+  supabase: SupabaseClient,
+  accountId: string,
+  userId: string,
+  input: NewBookingInput,
+): Promise<CreateBookingResult> {
+  const { data, error } = await supabase
+    .from('bookings')
+    .insert({
+      account_id: accountId,
+      user_id: userId,
+      client_name: input.clientName,
+      email: input.email ?? null,
+      phone: input.phone,
+      event_date: input.eventDate,
+      event_time: normalizeTime(input.eventTime),
+      guest_count: input.guestCount ?? null,
+      event_type: input.eventType ?? null,
+      message: input.message ?? null,
+      status: 'pendiente',
+      source: input.source,
+    })
+    .select('id')
+    .single();
+
+  if (error || !data) {
+    throw new Error(`No se pudo guardar la reserva: ${error?.message ?? 'sin datos'}`);
+  }
+
+  const bookingId = data.id as string;
+
+  let contactId: string | null = null;
+  try {
+    contactId = await syncBookingToCrm(supabase, accountId, userId, input, bookingId);
+  } catch (err) {
+    console.error('[bookings] crm sync threw:', err);
+  }
+
+  if (contactId) {
+    await supabase.from('bookings').update({ contact_id: contactId }).eq('id', bookingId);
+  }
+
+  return { bookingId, contactId, crmSynced: contactId !== null };
+}
+
+export { normalizePhone };
