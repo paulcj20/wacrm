@@ -1,5 +1,11 @@
 'use client';
 
+import { useEffect, useState } from 'react';
+
+import { Button } from '@/components/ui/button';
+import { GatedButton } from '@/components/ui/gated-button';
+import { useAuth } from '@/hooks/use-auth';
+import { createClient } from '@/lib/supabase/client';
 import { BOOKING_STATUSES, type Booking, type BookingStatus } from '@/lib/bookings/types';
 
 interface BookingDetailProps {
@@ -13,6 +19,45 @@ interface BookingDetailProps {
 }
 
 export function BookingDetail({ booking, updating, canWrite, onChangeStatus, onClose }: BookingDetailProps) {
+  const { accountId } = useAuth();
+
+  // El link "Ver el contacto en el CRM" apuntaba a una ruta de detalle de
+  // contacto por id que no existe en esta app (esa seccion usa estado
+  // local, sin deep link). El destino util es la conversacion de WhatsApp
+  // del contacto, que si soporta deep link (/inbox?c=<id>). Si el contacto
+  // todavia no tiene conversacion (nunca escribio), ofrecemos wa.me con su
+  // telefono en vez de un link muerto.
+  const [conversationId, setConversationId] = useState<string | null>(null);
+  const [checked, setChecked] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setChecked(false);
+    setConversationId(null);
+
+    if (!booking.contact_id || !accountId) {
+      setChecked(true);
+      return;
+    }
+
+    const supabase = createClient();
+    supabase
+      .from('conversations')
+      .select('id')
+      .eq('account_id', accountId)
+      .eq('contact_id', booking.contact_id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (cancelled) return;
+        setConversationId((data as { id: string } | null)?.id ?? null);
+        setChecked(true);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [booking.contact_id, accountId]);
+
   return (
     <div className="space-y-4">
       <div>
@@ -20,6 +65,7 @@ export function BookingDetail({ booking, updating, canWrite, onChangeStatus, onC
         <p className="text-sm text-muted-foreground">
           {booking.event_date}
           {booking.event_time ? ` · ${booking.event_time.slice(0, 5)}` : ''}
+          {booking.event_time_end ? ` – ${booking.event_time_end.slice(0, 5)}` : ''}
           {' · '}
           vino por {booking.source}
         </p>
@@ -34,6 +80,8 @@ export function BookingDetail({ booking, updating, canWrite, onChangeStatus, onC
         <dd>{booking.guest_count ?? '—'}</dd>
         <dt className="text-muted-foreground">Tipo</dt>
         <dd>{booking.event_type ?? '—'}</dd>
+        <dt className="text-muted-foreground">Dirección</dt>
+        <dd>{booking.address ?? '—'}</dd>
       </dl>
 
       {booking.message && (
@@ -43,29 +91,42 @@ export function BookingDetail({ booking, updating, canWrite, onChangeStatus, onC
         </div>
       )}
 
-      {booking.contact_id && (
-        <a href={`/contacts/${booking.contact_id}`} className="text-sm underline">
-          Ver el contacto en el CRM
-        </a>
+      {checked && (
+        conversationId ? (
+          <a href={`/inbox?c=${conversationId}`} className="text-sm underline">
+            Ver la conversación en el CRM
+          </a>
+        ) : (
+          <a
+            href={`https://wa.me/${booking.phone}`}
+            target="_blank"
+            rel="noreferrer"
+            className="text-sm underline"
+          >
+            Escribir por WhatsApp
+          </a>
+        )
       )}
 
       <div className="flex flex-wrap gap-2">
         {BOOKING_STATUSES.map((s) => (
-          <button
+          <GatedButton
             key={s}
-            type="button"
-            disabled={updating || !canWrite || booking.status === s}
+            variant="outline"
+            size="sm"
+            disabled={updating || booking.status === s}
+            canAct={canWrite}
+            gateReason="change booking status"
             onClick={() => onChangeStatus(s)}
-            className="rounded border px-3 py-1 text-sm disabled:opacity-40"
           >
             {booking.status === s ? `● ${s}` : s}
-          </button>
+          </GatedButton>
         ))}
       </div>
 
-      <button type="button" onClick={onClose} className="rounded border px-4 py-2">
+      <Button type="button" variant="outline" onClick={onClose}>
         Cerrar
-      </button>
+      </Button>
     </div>
   );
 }

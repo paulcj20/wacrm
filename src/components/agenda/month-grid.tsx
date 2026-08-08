@@ -8,9 +8,9 @@ interface MonthGridProps {
   month: number;
   bookings: Booking[];
   counts: Map<string, number>;
-  /** Falso para roles sin permiso de escritura: la celda deja de ofrecer
-   *  el alta, pero las reservas del dia siguen abriendose para consulta. */
-  canWrite: boolean;
+  /** Abre el panel de reservas de ese dia — la lectura queda abierta
+   *  para cualquier miembro; el gateo de escritura pasa a vivir en el
+   *  panel (accion "Agregar reserva") y en el formulario. */
   onSelectDay: (isoDate: string) => void;
   onSelectBooking: (booking: Booking) => void;
 }
@@ -26,7 +26,6 @@ export function MonthGrid({
   month,
   bookings,
   counts,
-  canWrite,
   onSelectDay,
   onSelectBooking,
 }: MonthGridProps) {
@@ -73,31 +72,25 @@ export function MonthGrid({
           // since a nested focusable element inside a button is
           // unreachable/ambiguous to assistive tech. This is a <div>
           // that is itself keyboard-operable (role="button" + tabIndex
-          // + onKeyDown) for "open the new-booking form on this day",
-          // while each booking row is its own real, independently
-          // focusable <button>.
+          // + onKeyDown) for "open this day's bookings panel", while
+          // each booking row is its own real, independently focusable
+          // <button>. Opening the day panel is a read action, so it's
+          // available to every role — the write gate lives inside the
+          // panel's "Agregar reserva" action and the form itself.
           return (
             <div
               key={iso}
-              role={canWrite ? 'button' : undefined}
-              tabIndex={canWrite ? 0 : undefined}
-              onClick={canWrite ? () => onSelectDay(iso) : undefined}
-              onKeyDown={
-                canWrite
-                  ? (e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        onSelectDay(iso);
-                      }
-                    }
-                  : undefined
-              }
-              aria-label={canWrite ? `Agregar reserva el ${iso}` : undefined}
-              className={
-                canWrite
-                  ? 'min-h-24 cursor-pointer bg-background p-1 text-left align-top hover:bg-accent'
-                  : 'min-h-24 bg-background p-1 text-left align-top'
-              }
+              role="button"
+              tabIndex={0}
+              onClick={() => onSelectDay(iso)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  onSelectDay(iso);
+                }
+              }}
+              aria-label={`Ver reservas del ${iso}`}
+              className="min-h-24 cursor-pointer bg-background p-1 text-left align-top hover:bg-accent"
             >
               <div className="flex items-center justify-between">
                 <span className="text-xs font-medium">{day}</span>

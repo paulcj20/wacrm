@@ -2,6 +2,19 @@
 
 import { useState } from 'react';
 
+import { GatedButton } from '@/components/ui/gated-button';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { normalizeBookingPhone } from '@/lib/bookings/phone';
 import { BOOKING_SOURCES, type BookingSource } from '@/lib/bookings/types';
 
 export interface BookingFormValues {
@@ -10,6 +23,8 @@ export interface BookingFormValues {
   email: string;
   eventDate: string;
   eventTime: string;
+  eventTimeEnd: string;
+  address: string;
   guestCount: string;
   eventType: string;
   message: string;
@@ -42,6 +57,8 @@ export function BookingForm({
     email: '',
     eventDate: initialDate,
     eventTime: '',
+    eventTimeEnd: '',
+    address: '',
     guestCount: '',
     eventType: '',
     message: '',
@@ -49,6 +66,11 @@ export function BookingForm({
     // por WhatsApp; es el valor por defecto mas probable.
     source: 'whatsapp',
   });
+  // Validacion inline del telefono: si `normalizeBookingPhone` no puede
+  // interpretarlo, bloqueamos el submit aca con un mensaje util en el
+  // campo en vez de dejar que `createBooking` tire un error crudo que
+  // solo aparece en el banner de la pagina.
+  const [phoneError, setPhoneError] = useState<string | null>(null);
 
   const set = (key: keyof BookingFormValues, value: string) =>
     setValues((v) => ({ ...v, [key]: value }));
@@ -57,6 +79,13 @@ export function BookingForm({
     <form
       onSubmit={(e) => {
         e.preventDefault();
+        if (!normalizeBookingPhone(values.phone)) {
+          setPhoneError(
+            'Ese número no parece válido. Escribilo con código de país o como se dicta localmente, por ejemplo 091 908 707.'
+          );
+          return;
+        }
+        setPhoneError(null);
         onSubmit(values);
       }}
       className="space-y-4"
@@ -68,108 +97,136 @@ export function BookingForm({
         </div>
       )}
 
-      <div>
-        <label htmlFor="clientName" className="block text-sm font-medium">Nombre</label>
-        <input
+      <div className="space-y-2">
+        <Label htmlFor="clientName">Nombre</Label>
+        <Input
           id="clientName" required value={values.clientName}
           onChange={(e) => set('clientName', e.target.value)}
-          className="mt-1 w-full rounded border p-2"
         />
       </div>
 
-      <div>
-        <label htmlFor="phone" className="block text-sm font-medium">WhatsApp</label>
-        <input
+      <div className="space-y-2">
+        <Label htmlFor="phone">WhatsApp</Label>
+        <Input
           id="phone" type="tel" required value={values.phone}
-          onChange={(e) => set('phone', e.target.value)}
+          onChange={(e) => {
+            set('phone', e.target.value);
+            if (phoneError) setPhoneError(null);
+          }}
           placeholder="+598 91 234 567"
-          className="mt-1 w-full rounded border p-2"
+          aria-invalid={phoneError ? true : undefined}
         />
-        <p className="mt-1 text-xs text-muted-foreground">
-          Con código de país. Si el contacto ya existe, se reutiliza.
-        </p>
+        {phoneError ? (
+          <p role="alert" className="text-xs text-destructive">
+            {phoneError}
+          </p>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            Con código de país. Si el contacto ya existe, se reutiliza.
+          </p>
+        )}
       </div>
 
-      <div>
-        <label htmlFor="email" className="block text-sm font-medium">Email (opcional)</label>
-        <input
+      <div className="space-y-2">
+        <Label htmlFor="email">Email (opcional)</Label>
+        <Input
           id="email" type="email" value={values.email}
           onChange={(e) => set('email', e.target.value)}
-          className="mt-1 w-full rounded border p-2"
         />
       </div>
 
       <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label htmlFor="eventDate" className="block text-sm font-medium">Fecha</label>
-          <input
+        <div className="space-y-2">
+          <Label htmlFor="eventDate">Fecha</Label>
+          <Input
             id="eventDate" type="date" required value={values.eventDate}
             onChange={(e) => set('eventDate', e.target.value)}
-            className="mt-1 w-full rounded border p-2"
           />
         </div>
-        <div>
-          <label htmlFor="eventTime" className="block text-sm font-medium">Hora</label>
-          <input
+        <div className="space-y-2">
+          <Label htmlFor="eventTime">Hora</Label>
+          <Input
             id="eventTime" type="time" value={values.eventTime}
             onChange={(e) => set('eventTime', e.target.value)}
-            className="mt-1 w-full rounded border p-2"
           />
         </div>
       </div>
 
       <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label htmlFor="guestCount" className="block text-sm font-medium">Invitados</label>
-          <input
+        <div className="space-y-2">
+          <Label htmlFor="eventTimeEnd">Hora de finalización</Label>
+          <Input
+            id="eventTimeEnd" type="time" value={values.eventTimeEnd}
+            onChange={(e) => set('eventTimeEnd', e.target.value)}
+          />
+          <p className="text-xs text-muted-foreground">
+            Opcional. Puede ser menor que la hora de inicio si el evento cruza la medianoche.
+          </p>
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="guestCount">Invitados</Label>
+          <Input
             id="guestCount" type="number" min="1" value={values.guestCount}
             onChange={(e) => set('guestCount', e.target.value)}
-            className="mt-1 w-full rounded border p-2"
           />
         </div>
-        <div>
-          <label htmlFor="eventType" className="block text-sm font-medium">Tipo</label>
-          <input
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="address">Dirección (opcional)</Label>
+        <Input
+          id="address" value={values.address}
+          onChange={(e) => set('address', e.target.value)}
+        />
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label htmlFor="eventType">Tipo</Label>
+          <Input
             id="eventType" value={values.eventType}
             onChange={(e) => set('eventType', e.target.value)}
             placeholder="Bodas"
-            className="mt-1 w-full rounded border p-2"
           />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="source">Vino por</Label>
+          <Select
+            value={values.source}
+            onValueChange={(value) => set('source', value as BookingSource)}
+          >
+            <SelectTrigger id="source" className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {BOOKING_SOURCES.map((s) => (
+                <SelectItem key={s} value={s}>{s}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
-      <div>
-        <label htmlFor="source" className="block text-sm font-medium">Vino por</label>
-        <select
-          id="source" value={values.source}
-          onChange={(e) => set('source', e.target.value as BookingSource)}
-          className="mt-1 w-full rounded border p-2"
-        >
-          {BOOKING_SOURCES.map((s) => (
-            <option key={s} value={s}>{s}</option>
-          ))}
-        </select>
-      </div>
-
-      <div>
-        <label htmlFor="message" className="block text-sm font-medium">Notas</label>
-        <textarea
+      <div className="space-y-2">
+        <Label htmlFor="message">Notas</Label>
+        <Textarea
           id="message" rows={3} value={values.message}
           onChange={(e) => set('message', e.target.value)}
-          className="mt-1 w-full rounded border p-2"
         />
       </div>
 
       <div className="flex gap-2">
-        <button
-          type="submit" disabled={submitting || !canWrite}
-          className="rounded bg-primary px-4 py-2 text-primary-foreground disabled:opacity-50"
+        <GatedButton
+          type="submit"
+          disabled={submitting}
+          canAct={canWrite}
+          gateReason="create bookings"
         >
           {submitting ? 'Guardando…' : 'Guardar reserva'}
-        </button>
-        <button type="button" onClick={onCancel} className="rounded border px-4 py-2">
+        </GatedButton>
+        <Button type="button" variant="outline" onClick={onCancel}>
           Cancelar
-        </button>
+        </Button>
       </div>
     </form>
   );
