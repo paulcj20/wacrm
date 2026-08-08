@@ -21,12 +21,16 @@ interface BookingDetailProps {
 export function BookingDetail({ booking, updating, canWrite, onChangeStatus, onClose }: BookingDetailProps) {
   const { accountId } = useAuth();
 
-  // El link "Ver el contacto en el CRM" apuntaba a una ruta de detalle de
-  // contacto por id que no existe en esta app (esa seccion usa estado
-  // local, sin deep link). El destino util es la conversacion de WhatsApp
-  // del contacto, que si soporta deep link (/inbox?c=<id>). Si el contacto
-  // todavia no tiene conversacion (nunca escribio), ofrecemos wa.me con su
-  // telefono en vez de un link muerto.
+  // El destino siempre es el inbox del propio wacrm: es donde el equipo
+  // trabaja las conversaciones. Si el contacto ya tiene una, entramos
+  // directo a ella con el deep link que el inbox soporta (?c=<id>); si
+  // todavia no escribio, entramos al inbox igual.
+  //
+  // Antes esto apuntaba a /contacts/<id>, una ruta que no existe (esa
+  // seccion usa estado local), y despues a un wa.me externo — que ademas
+  // fallaba, porque usaba el telefono crudo y las reservas viejas lo
+  // tienen con `+` y espacios. Sacar al equipo de la aplicacion para algo
+  // que la aplicacion ya hace era el error de fondo.
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [checked, setChecked] = useState(false);
 
@@ -92,20 +96,14 @@ export function BookingDetail({ booking, updating, canWrite, onChangeStatus, onC
       )}
 
       {checked && (
-        conversationId ? (
-          <a href={`/inbox?c=${conversationId}`} className="text-sm underline">
-            Ver la conversación en el CRM
-          </a>
-        ) : (
-          <a
-            href={`https://wa.me/${booking.phone}`}
-            target="_blank"
-            rel="noreferrer"
-            className="text-sm underline"
-          >
-            Escribir por WhatsApp
-          </a>
-        )
+        <a
+          href={conversationId ? `/inbox?c=${conversationId}` : '/inbox'}
+          className="text-sm underline"
+        >
+          {conversationId
+            ? 'Abrir la conversación en el inbox'
+            : 'Abrir el inbox — este contacto todavía no escribió'}
+        </a>
       )}
 
       <div className="flex flex-wrap gap-2">
