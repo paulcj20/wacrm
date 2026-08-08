@@ -99,11 +99,23 @@ export async function syncBookingToCrm(
   // La tarjeta es opcional: si no hay pipeline configurado todavia,
   // la reserva y el contacto ya cumplieron su funcion.
   try {
-    const { data: pipeline } = await supabase
+    const configuredPipelineId = process.env.NEXT_PUBLIC_BOOKINGS_PIPELINE_ID;
+
+    const { data: pipeline } = configuredPipelineId
+      ? { data: { id: configuredPipelineId } }
+      : await supabase
       .from('pipelines')
       .select('id')
+      // Buscar por el nombre literal 'Sales Pipeline' era fragil: wacrm crea
+      // ese pipeline solo la primera vez que alguien entra a la seccion, y el
+      // equipo despues arma el suyo con otro nombre. La tarjeta dejaba de
+      // crearse EN SILENCIO, porque toda esta rama es best-effort.
+      //
+      // Ahora el pipeline se declara. Si no esta configurado, cae al primero
+      // de la cuenta, que es lo mas razonable cuando hay uno solo.
       .eq('account_id', accountId)
-      .eq('name', 'Sales Pipeline')
+      .order('created_at', { ascending: true })
+      .limit(1)
       .maybeSingle();
 
     if (pipeline) {
