@@ -105,18 +105,27 @@ describe("lastNDayKeys", () => {
 });
 
 describe("mondayIndex", () => {
+  // `new Date("2026-05-18")` parses an ISO date-only string as midnight
+  // UTC, but mondayIndex reads `getDay()`, which is local. In any
+  // negative-offset timezone (all of the Americas) that lands on the
+  // previous day and the assertions fail — e.g. UTC-3 sees Sunday the
+  // 17th, not Monday the 18th. The three-argument constructor builds
+  // the date in local time, so these now assert the same thing in
+  // every timezone. Month is 0-based: 4 = May.
+  const localDate = (y: number, m: number, d: number) => new Date(y, m - 1, d);
+
   it("maps Monday → 0 and Sunday → 6", () => {
-    expect(mondayIndex(new Date("2026-05-18"))).toBe(0); // Mon
-    expect(mondayIndex(new Date("2026-05-19"))).toBe(1); // Tue
-    expect(mondayIndex(new Date("2026-05-23"))).toBe(5); // Sat
-    expect(mondayIndex(new Date("2026-05-24"))).toBe(6); // Sun
+    expect(mondayIndex(localDate(2026, 5, 18))).toBe(0); // Mon
+    expect(mondayIndex(localDate(2026, 5, 19))).toBe(1); // Tue
+    expect(mondayIndex(localDate(2026, 5, 23))).toBe(5); // Sat
+    expect(mondayIndex(localDate(2026, 5, 24))).toBe(6); // Sun
   });
 
   it("aligns with DOW_SHORT_MON_FIRST labels", () => {
-    expect(DOW_SHORT_MON_FIRST[mondayIndex(new Date("2026-05-18"))]).toBe(
+    expect(DOW_SHORT_MON_FIRST[mondayIndex(localDate(2026, 5, 18))]).toBe(
       "Mon",
     );
-    expect(DOW_SHORT_MON_FIRST[mondayIndex(new Date("2026-05-24"))]).toBe(
+    expect(DOW_SHORT_MON_FIRST[mondayIndex(localDate(2026, 5, 24))]).toBe(
       "Sun",
     );
   });
