@@ -167,6 +167,10 @@ export const RATE_LIMITS = {
    *  capping a stampede; excess inbounds simply don't get an auto-reply
    *  (they still land in the inbox for a human). */
   aiAutoReplyAccount: { limit: 30, windowMs: 60_000 },
+  /** Formulario publico de reservas, por IP. 5/min: una persona
+   *  cargando una reserva de verdad no necesita mas, y corta el spam
+   *  automatizado sin molestar a nadie real. */
+  publicBooking: { limit: 5, windowMs: 60_000 },
 } as const;
 
 /** Test-only helper. Clears the in-memory state so unit tests don't
