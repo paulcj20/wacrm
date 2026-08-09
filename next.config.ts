@@ -28,6 +28,15 @@ const SECURITY_HEADERS = [
   { key: "X-Frame-Options", value: "DENY" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
   {
+    // Este es el panel interno de un negocio: no debe aparecer en
+    // buscadores ni competir con su sitio comercial. Va como cabecera
+    // y no solo en robots.txt porque una cabecera cubre TODA respuesta,
+    // incluidas rutas que un robots.txt podria no listar. Y va en el
+    // codigo y no en una regla del CDN para que viaje con la app.
+    key: "X-Robots-Tag",
+    value: "noindex, nofollow",
+  },
+  {
     // Microphone is allowed for same-origin (`self`) so the inbox
     // composer can record voice notes via MediaRecorder. Everything
     // else stays denied — a compromised dependency can't silently grab
