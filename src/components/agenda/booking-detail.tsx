@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { GatedButton } from '@/components/ui/gated-button';
 import { useAuth } from '@/hooks/use-auth';
 import { createClient } from '@/lib/supabase/client';
+import { getBookingStatus } from '@/lib/bookings/status-display';
 import { BOOKING_STATUSES, type Booking, type BookingStatus } from '@/lib/bookings/types';
 
 interface BookingDetailProps {
@@ -65,7 +66,14 @@ export function BookingDetail({ booking, updating, canWrite, onChangeStatus, onC
   return (
     <div className="space-y-4">
       <div>
-        <h3 className="text-lg font-semibold">{booking.client_name}</h3>
+        <div className="flex flex-wrap items-center gap-2">
+          <h3 className="text-lg font-semibold">{booking.client_name}</h3>
+          <span
+            className={`rounded-full border px-2 py-0.5 text-xs font-medium ${getBookingStatus(booking.status).classes}`}
+          >
+            {getBookingStatus(booking.status).label}
+          </span>
+        </div>
         <p className="text-sm text-muted-foreground">
           {booking.event_date}
           {booking.event_time ? ` · ${booking.event_time.slice(0, 5)}` : ''}
@@ -107,19 +115,26 @@ export function BookingDetail({ booking, updating, canWrite, onChangeStatus, onC
       )}
 
       <div className="flex flex-wrap gap-2">
-        {BOOKING_STATUSES.map((s) => (
-          <GatedButton
-            key={s}
-            variant="outline"
-            size="sm"
-            disabled={updating || booking.status === s}
-            canAct={canWrite}
-            gateReason="change booking status"
-            onClick={() => onChangeStatus(s)}
-          >
-            {booking.status === s ? `● ${s}` : s}
-          </GatedButton>
-        ))}
+        {BOOKING_STATUSES.map((s) => {
+          const active = booking.status === s;
+          return (
+            <GatedButton
+              key={s}
+              variant="outline"
+              size="sm"
+              disabled={updating || active}
+              canAct={canWrite}
+              gateReason="change booking status"
+              onClick={() => onChangeStatus(s)}
+              // El estado activo toma la pastilla de color de
+              // `bookingStatusConfig` en vez del prefijo "●" de texto,
+              // para que hable el mismo lenguaje visual que la grilla.
+              className={active ? getBookingStatus(s).classes : undefined}
+            >
+              {s}
+            </GatedButton>
+          );
+        })}
       </div>
 
       <Button type="button" variant="outline" onClick={onClose}>

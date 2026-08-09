@@ -18,7 +18,8 @@ import { useAuth } from '@/hooks/use-auth';
 import { useCan } from '@/hooks/use-can';
 import { createBooking } from '@/lib/bookings/create';
 import { countByDate, listBookingsForMonth } from '@/lib/bookings/queries';
-import type { Booking, BookingStatus } from '@/lib/bookings/types';
+import { bookingStatusConfig } from '@/lib/bookings/status-display';
+import { BOOKING_STATUSES, type Booking, type BookingStatus } from '@/lib/bookings/types';
 import { createClient } from '@/lib/supabase/client';
 
 /**
@@ -32,6 +33,16 @@ type AgendaView =
   | { type: 'day'; date: string }
   | { type: 'create'; date: string }
   | { type: 'detail'; booking: Booking };
+
+// Relleno solido para el punto de la referencia de color — separado de
+// `bookingStatusConfig` porque ese usa un tinte al 10% pensado para el
+// fondo de una pastilla con texto encima, y a 10px de diametro ese
+// tinte es casi invisible.
+const LEGEND_DOT_CLASSES: Record<BookingStatus, string> = {
+  pendiente: 'bg-yellow-500',
+  confirmada: 'bg-primary',
+  rechazada: 'bg-red-500',
+};
 
 export default function AgendaPage() {
   const supabase = useMemo(() => createClient(), []);
@@ -151,6 +162,20 @@ export default function AgendaPage() {
         </div>
       )}
 
+      {/* Referencia de color: las tres pastillas de estado no son
+          autoexplicativas a primera vista, asi que dejamos el
+          significado a la vista sin agregar otra pantalla. El punto
+          usa un relleno solido (no el tinte 10% de la pastilla) para
+          que el color se distinga a ese tamaño. */}
+      <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+        {BOOKING_STATUSES.map((s) => (
+          <span key={s} className="flex items-center gap-1.5">
+            <span className={`h-2.5 w-2.5 rounded-full ${LEGEND_DOT_CLASSES[s]}`} aria-hidden="true" />
+            {bookingStatusConfig[s].label}
+          </span>
+        ))}
+      </div>
+
       {!hasLoaded ? (
         <p className="text-sm text-muted-foreground">Cargando…</p>
       ) : (
@@ -172,7 +197,20 @@ export default function AgendaPage() {
           if (!open) setView(null);
         }}
       >
-        <DialogContent className="sm:max-w-lg">
+        {/*
+          El formulario de alta tiene nueve campos: en una laptop de pantalla
+          chica (y peor, en un celular) desbordaba el viewport sin ninguna
+          forma de scrollear, asi que el boton "Guardar reserva" quedaba
+          fuera de alcance y la reserva no se podia cargar. `max-h-[90svh]`
+          (no `vh`: en mobile `vh` cuenta el area detras de la barra de URL
+          colapsable, asi que un 90vh queda mas alto que la pantalla visible
+          y reproduce el mismo bug en el celular) limita la altura del
+          dialogo entero; el header queda fijo y solo el cuerpo (panel del
+          dia / formulario / detalle) scrollea, para que el titulo y la X de
+          cerrar sigan siempre a la vista sin importar cuanto contenido haya
+          debajo.
+        */}
+        <DialogContent className="flex max-h-[90svh] flex-col overflow-hidden sm:max-w-lg">
           {view?.type === 'day' && (
             <>
               <DialogHeader>
@@ -181,13 +219,15 @@ export default function AgendaPage() {
                   Elegí una reserva para verla, o agregá una nueva para este día.
                 </DialogDescription>
               </DialogHeader>
-              <DayBookingsPanel
-                date={view.date}
-                bookings={bookings.filter((b) => b.event_date === view.date)}
-                canWrite={canWrite}
-                onSelectBooking={(b) => setView({ type: 'detail', booking: b })}
-                onAddBooking={() => setView({ type: 'create', date: view.date })}
-              />
+              <div className="min-h-0 overflow-y-auto">
+                <DayBookingsPanel
+                  date={view.date}
+                  bookings={bookings.filter((b) => b.event_date === view.date)}
+                  canWrite={canWrite}
+                  onSelectBooking={(b) => setView({ type: 'detail', booking: b })}
+                  onAddBooking={() => setView({ type: 'create', date: view.date })}
+                />
+              </div>
             </>
           )}
 
@@ -197,14 +237,16 @@ export default function AgendaPage() {
                 <DialogTitle>Nueva reserva</DialogTitle>
                 <DialogDescription>{view.date}</DialogDescription>
               </DialogHeader>
-              <BookingForm
-                initialDate={view.date}
-                existingOnDate={counts.get(view.date) ?? 0}
-                submitting={submitting}
-                canWrite={canWrite}
-                onSubmit={handleCreate}
-                onCancel={() => setView({ type: 'day', date: view.date })}
-              />
+              <div className="min-h-0 overflow-y-auto">
+                <BookingForm
+                  initialDate={view.date}
+                  existingOnDate={counts.get(view.date) ?? 0}
+                  submitting={submitting}
+                  canWrite={canWrite}
+                  onSubmit={handleCreate}
+                  onCancel={() => setView({ type: 'day', date: view.date })}
+                />
+              </div>
             </>
           )}
 
@@ -213,16 +255,18 @@ export default function AgendaPage() {
               <DialogHeader>
                 <DialogTitle>Detalle de la reserva</DialogTitle>
               </DialogHeader>
-              <BookingDetail
-                booking={view.booking}
-                updating={submitting}
-                canWrite={canWrite}
-                onChangeStatus={handleStatus}
-                // Volver al dia, no cerrar todo: al detalle casi siempre se
-                // llega desde la lista de ese dia, y cerrar el modal entero
-                // obliga a rehacer el camino para ver la reserva de al lado.
-                onClose={() => setView({ type: 'day', date: view.booking.event_date })}
-              />
+              <div className="min-h-0 overflow-y-auto">
+                <BookingDetail
+                  booking={view.booking}
+                  updating={submitting}
+                  canWrite={canWrite}
+                  onChangeStatus={handleStatus}
+                  // Volver al dia, no cerrar todo: al detalle casi siempre se
+                  // llega desde la lista de ese dia, y cerrar el modal entero
+                  // obliga a rehacer el camino para ver la reserva de al lado.
+                  onClose={() => setView({ type: 'day', date: view.booking.event_date })}
+                />
+              </div>
             </>
           )}
         </DialogContent>

@@ -1,5 +1,6 @@
 'use client';
 
+import { getBookingStatus } from '@/lib/bookings/status-display';
 import type { Booking } from '@/lib/bookings/types';
 
 interface MonthGridProps {
@@ -104,21 +105,25 @@ export function MonthGrid({
                 )}
               </div>
               <ul className="mt-1 space-y-0.5">
-                {dayBookings.map((b) => (
-                  <li key={b.id}>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onSelectBooking(b);
-                      }}
-                      className="block w-full truncate rounded px-1 text-left text-[11px] hover:underline"
-                    >
-                      {b.event_time ? `${b.event_time.slice(0, 5)} ` : ''}
-                      {b.client_name}
-                    </button>
-                  </li>
-                ))}
+                {dayBookings.map((b) => {
+                  const status = getBookingStatus(b.status);
+                  return (
+                    <li key={b.id}>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onSelectBooking(b);
+                        }}
+                        title={`${b.client_name} · ${status.label}`}
+                        className={`block w-full truncate rounded-full border px-1.5 py-0.5 text-left text-[11px] font-medium ${status.classes}`}
+                      >
+                        {b.event_time ? `${b.event_time.slice(0, 5)} ` : ''}
+                        {b.client_name}
+                      </button>
+                    </li>
+                  );
+                })}
               </ul>
             </div>
           );
