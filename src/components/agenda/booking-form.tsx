@@ -34,8 +34,11 @@ export interface BookingFormValues {
 interface BookingFormProps {
   /** Fecha preseleccionada al hacer clic en un día de la grilla. */
   initialDate: string;
-  /** Cuántas reservas ya hay ese día — alimenta el aviso de conflicto. */
-  existingOnDate: number;
+  /** Cuántas reservas hay en una fecha dada. Se recibe como función y no
+   *  como número porque el usuario puede cambiar la fecha dentro del
+   *  formulario: un aviso calculado con la fecha inicial estaría hablando
+   *  de otro día, y un aviso que miente enseña a ignorarlo. */
+  countForDate: (isoDate: string) => number;
   submitting: boolean;
   /** Falso para roles sin permiso de escritura. */
   canWrite: boolean;
@@ -51,7 +54,7 @@ interface BookingFormProps {
 
 export function BookingForm({
   initialDate,
-  existingOnDate,
+  countForDate,
   submitting,
   canWrite,
   initialValues,
@@ -100,9 +103,10 @@ export function BookingForm({
       }}
       className="space-y-4"
     >
-      {existingOnDate > 0 && (
+      {countForDate(values.eventDate) > 0 && (
         <div role="status" className="rounded border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
-          Ya hay {existingOnDate} {existingOnDate === 1 ? 'reserva' : 'reservas'} ese día.
+          Ya hay {countForDate(values.eventDate)}{' '}
+          {countForDate(values.eventDate) === 1 ? 'reserva' : 'reservas'} ese día.
           Podés cargar esta igual.
         </div>
       )}

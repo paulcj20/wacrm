@@ -288,7 +288,7 @@ export default function AgendaPage() {
               <div className="min-h-0 overflow-y-auto">
                 <BookingForm
                   initialDate={view.date}
-                  existingOnDate={counts.get(view.date) ?? 0}
+                  countForDate={(d) => counts.get(d) ?? 0}
                   submitting={submitting}
                   canWrite={canWrite}
                   onSubmit={handleCreate}
@@ -334,7 +334,11 @@ export default function AgendaPage() {
                   // editar (una reserva siempre coincide consigo misma), y
                   // un aviso que aparece en el 100% de los casos deja de
                   // avisar de nada.
-                  existingOnDate={Math.max(0, (counts.get(view.booking.event_date) ?? 0) - 1)}
+                  // Al editar, la propia reserva ya esta contada en su fecha original.
+                  // Se descuenta solo cuando la fecha elegida sigue siendo esa.
+                  countForDate={(d) =>
+                    Math.max(0, (counts.get(d) ?? 0) - (d === view.booking.event_date ? 1 : 0))
+                  }
                   submitting={submitting}
                   canWrite={canWrite}
                   submitLabel="Guardar cambios"
