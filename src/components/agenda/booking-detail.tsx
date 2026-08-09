@@ -17,9 +17,11 @@ interface BookingDetailProps {
   canWrite: boolean;
   onChangeStatus: (status: BookingStatus) => void;
   onClose: () => void;
+  /** Abre el formulario precargado para editar esta reserva. */
+  onEdit: () => void;
 }
 
-export function BookingDetail({ booking, updating, canWrite, onChangeStatus, onClose }: BookingDetailProps) {
+export function BookingDetail({ booking, updating, canWrite, onChangeStatus, onClose, onEdit }: BookingDetailProps) {
   const { accountId } = useAuth();
 
   // El destino siempre es el inbox del propio wacrm: es donde el equipo
@@ -137,9 +139,20 @@ export function BookingDetail({ booking, updating, canWrite, onChangeStatus, onC
         })}
       </div>
 
-      <Button type="button" variant="outline" onClick={onClose}>
-        Cerrar
-      </Button>
+      <div className="flex flex-wrap gap-2">
+        <GatedButton
+          type="button"
+          variant="outline"
+          canAct={canWrite}
+          gateReason="edit bookings"
+          onClick={onEdit}
+        >
+          Editar
+        </GatedButton>
+        <Button type="button" variant="outline" onClick={onClose}>
+          Cerrar
+        </Button>
+      </div>
     </div>
   );
 }

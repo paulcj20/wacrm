@@ -39,6 +39,12 @@ interface BookingFormProps {
   submitting: boolean;
   /** Falso para roles sin permiso de escritura. */
   canWrite: boolean;
+  /** Precarga todos los campos para editar una reserva existente. Si
+   *  no se pasa, el formulario arranca vacío (alta). */
+  initialValues?: BookingFormValues;
+  /** Texto del botón de submit. Por defecto "Guardar reserva" (alta);
+   *  la edición pasa "Guardar cambios". */
+  submitLabel?: string;
   onSubmit: (values: BookingFormValues) => void;
   onCancel: () => void;
 }
@@ -48,24 +54,28 @@ export function BookingForm({
   existingOnDate,
   submitting,
   canWrite,
+  initialValues,
+  submitLabel = 'Guardar reserva',
   onSubmit,
   onCancel,
 }: BookingFormProps) {
-  const [values, setValues] = useState<BookingFormValues>({
-    clientName: '',
-    phone: '',
-    email: '',
-    eventDate: initialDate,
-    eventTime: '',
-    eventTimeEnd: '',
-    address: '',
-    guestCount: '',
-    eventType: '',
-    message: '',
-    // El alta manual existe porque la mayoria de las reservas llegan
-    // por WhatsApp; es el valor por defecto mas probable.
-    source: 'whatsapp',
-  });
+  const [values, setValues] = useState<BookingFormValues>(
+    initialValues ?? {
+      clientName: '',
+      phone: '',
+      email: '',
+      eventDate: initialDate,
+      eventTime: '',
+      eventTimeEnd: '',
+      address: '',
+      guestCount: '',
+      eventType: '',
+      message: '',
+      // El alta manual existe porque la mayoria de las reservas llegan
+      // por WhatsApp; es el valor por defecto mas probable.
+      source: 'whatsapp',
+    },
+  );
   // Validacion inline del telefono: si `normalizeBookingPhone` no puede
   // interpretarlo, bloqueamos el submit aca con un mensaje util en el
   // campo en vez de dejar que `createBooking` tire un error crudo que
@@ -222,7 +232,7 @@ export function BookingForm({
           canAct={canWrite}
           gateReason="create bookings"
         >
-          {submitting ? 'Guardando…' : 'Guardar reserva'}
+          {submitting ? 'Guardando…' : submitLabel}
         </GatedButton>
         <Button type="button" variant="outline" onClick={onCancel}>
           Cancelar

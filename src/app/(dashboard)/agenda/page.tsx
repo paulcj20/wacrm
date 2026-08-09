@@ -18,6 +18,7 @@ import { useAuth } from '@/hooks/use-auth';
 import { useCan } from '@/hooks/use-can';
 import { createBooking } from '@/lib/bookings/create';
 import { countByDate, listBookingsForMonth } from '@/lib/bookings/queries';
+import { updateBooking } from '@/lib/bookings/update';
 import { bookingStatusConfig } from '@/lib/bookings/status-display';
 import { BOOKING_STATUSES, type Booking, type BookingStatus } from '@/lib/bookings/types';
 import { createClient } from '@/lib/supabase/client';
@@ -32,7 +33,8 @@ import { createClient } from '@/lib/supabase/client';
 type AgendaView =
   | { type: 'day'; date: string }
   | { type: 'create'; date: string }
-  | { type: 'detail'; booking: Booking };
+  | { type: 'detail'; booking: Booking }
+  | { type: 'edit'; booking: Booking };
 
 // Relleno solido para el punto de la referencia de color — separado de
 // `bookingStatusConfig` porque ese usa un tinte al 10% pensado para el
@@ -106,6 +108,52 @@ export default function AgendaPage() {
         source: values.source,
       });
       setView(null);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo guardar la reserva');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleUpdate = async (values: BookingFormValues) => {
+    if (!accountId || !user || !view || view.type !== 'edit') return;
+    const bookingId = view.booking.id;
+    setSubmitting(true);
+    setError(null);
+    try {
+      await updateBooking(supabase, bookingId, accountId, user.id, {
+        clientName: values.clientName,
+        email: values.email || null,
+        phone: values.phone,
+        eventDate: values.eventDate,
+        eventTime: values.eventTime || null,
+        eventTimeEnd: values.eventTimeEnd || null,
+        address: values.address || null,
+        guestCount: values.guestCount ? Number(values.guestCount) : null,
+        eventType: values.eventType || null,
+        message: values.message || null,
+        source: values.source,
+      });
+      // Status no lo toca `updateBooking` a proposito: se preserva el
+      // que ya tenia la reserva.
+      setView({
+        type: 'detail',
+        booking: {
+          ...view.booking,
+          client_name: values.clientName,
+          email: values.email || null,
+          phone: values.phone,
+          event_date: values.eventDate,
+          event_time: values.eventTime ? `${values.eventTime}:00` : null,
+          event_time_end: values.eventTimeEnd ? `${values.eventTimeEnd}:00` : null,
+          address: values.address || null,
+          guest_count: values.guestCount ? Number(values.guestCount) : null,
+          event_type: values.eventType || null,
+          message: values.message || null,
+          source: values.source,
+        },
+      });
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo guardar la reserva');
@@ -265,6 +313,47 @@ export default function AgendaPage() {
                   // llega desde la lista de ese dia, y cerrar el modal entero
                   // obliga a rehacer el camino para ver la reserva de al lado.
                   onClose={() => setView({ type: 'day', date: view.booking.event_date })}
+                  onEdit={() => setView({ type: 'edit', booking: view.booking })}
+                />
+              </div>
+            </>
+          )}
+
+          {view?.type === 'edit' && (
+            <>
+              <DialogHeader>
+                <DialogTitle>Editar reserva</DialogTitle>
+                <DialogDescription>{view.booking.event_date}</DialogDescription>
+              </DialogHeader>
+              <div className="min-h-0 overflow-y-auto">
+                <BookingForm
+                  initialDate={view.booking.event_date}
+                  // La reserva que se esta editando ya cuenta en `counts`
+                  // para su propia fecha: si no se descuenta, el aviso de
+                  // "ya hay N reservas ese dia" se dispara SIEMPRE al
+                  // editar (una reserva siempre coincide consigo misma), y
+                  // un aviso que aparece en el 100% de los casos deja de
+                  // avisar de nada.
+                  existingOnDate={Math.max(0, (counts.get(view.booking.event_date) ?? 0) - 1)}
+                  submitting={submitting}
+                  canWrite={canWrite}
+                  submitLabel="Guardar cambios"
+                  initialValues={{
+                    clientName: view.booking.client_name,
+                    phone: view.booking.phone,
+                    email: view.booking.email ?? '',
+                    eventDate: view.booking.event_date,
+                    eventTime: view.booking.event_time?.slice(0, 5) ?? '',
+                    eventTimeEnd: view.booking.event_time_end?.slice(0, 5) ?? '',
+                    address: view.booking.address ?? '',
+                    guestCount: view.booking.guest_count != null ? String(view.booking.guest_count) : '',
+                    eventType: view.booking.event_type ?? '',
+                    message: view.booking.message ?? '',
+                    source: view.booking.source,
+                  }}
+                  onSubmit={handleUpdate}
+                  // Cancelar vuelve al detalle sin guardar.
+                  onCancel={() => setView({ type: 'detail', booking: view.booking })}
                 />
               </div>
             </>
