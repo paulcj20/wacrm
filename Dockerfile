@@ -26,10 +26,18 @@ ARG NEXT_PUBLIC_SUPABASE_URL
 ARG NEXT_PUBLIC_SUPABASE_ANON_KEY
 ARG NEXT_PUBLIC_SITE_URL
 ARG NEXT_PUBLIC_APP_LOCALE=en
+# A que pipeline va la tarjeta de cada reserva. Es NEXT_PUBLIC_, asi que
+# Next la incrusta en tiempo de build: la pagina de agenda crea reservas
+# desde el navegador, y sin esto el bundle sale sin el id y cae al primer
+# pipeline de la cuenta — el 'Sales Pipeline' que wacrm crea solo, no el
+# que usa el equipo. La tarjeta aterrizaria en el lugar equivocado, en
+# silencio, porque esa rama es best-effort.
+ARG NEXT_PUBLIC_BOOKINGS_PIPELINE_ID
 ENV NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL \
     NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY \
     NEXT_PUBLIC_SITE_URL=$NEXT_PUBLIC_SITE_URL \
     NEXT_PUBLIC_APP_LOCALE=$NEXT_PUBLIC_APP_LOCALE \
+    NEXT_PUBLIC_BOOKINGS_PIPELINE_ID=$NEXT_PUBLIC_BOOKINGS_PIPELINE_ID \
     NEXT_TELEMETRY_DISABLED=1
 
 RUN npm run build
